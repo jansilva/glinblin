@@ -12,7 +12,7 @@ class Severity(Enum):
     NOT_SET = auto()
 
 
-class GlinblinLog:
+class Logger:
 
     def __init__(self):
         pass
@@ -30,4 +30,6 @@ class GlinblinLog:
         pass
 
     def log(self, severity: Severity, message: str) -> None:
+        # print(f"Your package is running...")
         pass
+
