@@ -4,9 +4,6 @@ from setuptools import setup
 with open("README.md", "r") as fhandler:
     readme = fhandler.read()
 
-with open('requirements.txt') as f:
-    required = f.read().splitlines()
-
 setup(
     name="glinblin",
     version="0.0.1",
@@ -20,5 +17,5 @@ setup(
     description="Implements a logger formatter in order to send it to an \
         elasticsearch repository.",
     packages=["glinblin"],
-    install_requires=required,
+    install_requires=["boto3==1.25.4"],
 )
