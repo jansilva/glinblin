@@ -1,10 +1,10 @@
 import logging
-from typing import Union
-import threading
-import multiprocessing
+import time
 
-from ..dispatchers.elasticsearch_dispatcher import ElasticSearchDispatcher
-from ..formatters.default_formatter import DEFAULT_FMT_STR, DEFAULT_FMT_DATETIME
+from typing import Union, Dict, MutableMapping, Any
+from queue import Queue
+
+from ..dispatchers.http_async_dispatcher import DispatcherWorker
 
 
 class ElasticSearchHandler(logging.Handler):
@@ -14,32 +14,60 @@ class ElasticSearchHandler(logging.Handler):
     """
     def __init__(
             self,
-            application_name: str = None,
-            level: Union[int, str] = logging.DEBUG,
-            fmt: logging.Formatter = None
-        ):
-        logging.Handler.__init__(self, level)
+            logger_level: int = logging.NOTSET,
+            fmt: logging.Formatter = None,
+            buffer_size: int = 10000):
+        """
+        This initializes the instance attributes.
+        :param logger_level: Log level
+                            <logging.INFO|
+                             logging.DEBUG|
+                             logging.WARNING|
+                             logging.ERROR|
+                             logging.CRITICAL>
+        :param fmt: a formatter to transform the message text.
+        :param buffer_size: The size limit of the buffer.
+        :param raise_exceptions: If True throw error breaking the caller. Otherwise,
+                               Just ignore the error.
+        """
+        logging.Handler.__init__(self, level=logger_level)
         self.__fmt = fmt
-        if not self.__fmt:
-            self.__fmt = logging.Formatter(fmt=DEFAULT_FMT_STR, datefmt=DEFAULT_FMT_DATETIME)
+        logging.Handler.setFormatter(self, self.__fmt)
 
-        super(ElasticSearchHandler, self).setFormatter(self.__fmt)
+        self.__buffer = Queue(maxsize=buffer_size)
+        self.__dispatcher = DispatcherWorker(buffer=self.__buffer)
+        self.__dispatcher.start()
 
-        self.__dispatcher = ElasticSearchDispatcher()
+    def __add_payload_to_buffer(self, message: MutableMapping[str, Any]) -> None:
+        """
+        In case of failure while trying to enqueue message, this module
+        shouldn't propagate error to the caller, just log message normally.
+        Unless the flag throw_error_while_enqueue was configured with True value.
+        :param message: A JSON object to send to the destination.
+        :return: None
+        """
+        if self.__dispatcher.is_alive():
+            self.__buffer.put(message)
 
     def emit(self, record: logging.LogRecord) -> None:
         """
         when a message is produced emit is triggered in order
         to dispatch the message.
         The message will be stored into a thread-safe queue(a FIFO buffer),
-        after it a separated thread(dispatcher) will send it asynchronously to the
+        after it, a separated thread(dispatcher) will send it asynchronously to the
         destination.
-        :param record: A logger message
+        :param record: A logger JSON structured message
         :return: None
         """
-        print(f"record: {record.__dict__}")
-        message = self.format(record)
-        self.__dispatcher.enqueue_message(message)
+        try:
+            payload = self.__fmt.format_to_json(record)
+            self.__add_payload_to_buffer(payload)
+        except Exception as e:
+            logging.Handler.handleError(self, record)
 
     def close(self):
-        self.__dispatcher.finish_dispatcher()
+        """
+        Finishes the consumer thread.
+        :return:
+        """
+        self.__dispatcher.join()

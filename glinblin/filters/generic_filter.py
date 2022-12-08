@@ -27,6 +27,6 @@ class DefaultFilter(logging.Filter):
         """"""
         message = record.getMessage()
         if message:
-            self.__criteria_func(message)
+            return self.__criteria_func(message)
         else:
             return False
